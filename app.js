@@ -181,6 +181,7 @@ function renderTable(data, visibleCols) {
         const colName = headerData[actualColIdx] || `Col ${actualColIdx + 1}`;
         th.textContent = colName;
         th.classList.add(baseSet.has(actualColIdx) ? 'group-base' : 'group-extra');
+        applyAlignmentClasses(th, colName);
         if (isDescriptionColumn(colName)) {
             th.classList.add('description-col');
         } else {
@@ -204,6 +205,7 @@ function renderTable(data, visibleCols) {
             const cellValue = row[actualColIdx] !== undefined ? row[actualColIdx] : '';
             const colName = headerData[actualColIdx] || `Col ${actualColIdx + 1}`;
             td.classList.add(baseSet.has(actualColIdx) ? 'group-base' : 'group-extra');
+            applyAlignmentClasses(td, colName);
             const isDescription = isDescriptionColumn(colName);
             if (isDescription) {
                 td.classList.add('description-col');
@@ -216,7 +218,7 @@ function renderTable(data, visibleCols) {
             );
 
             if (isEditable) {
-                td.className = 'editable-cell';
+                td.classList.add('editable-cell');
                 td.title = 'Haz clic para editar';
                 td.onclick = () => openEditModal(rowIdx, actualColIdx, colName, cellValue);
             }
@@ -443,6 +445,45 @@ function isCurrencyColumn(colName) {
 function isDescriptionColumn(colName) {
     const name = String(colName || '').toUpperCase();
     return name.includes('DESCRIP');
+}
+
+function isItemColumn(colName) {
+    const name = String(colName || '').toUpperCase().trim();
+    return name === 'ITEM' || name.startsWith('ITEM ');
+}
+
+function isUmColumn(colName) {
+    const name = String(colName || '').toUpperCase().trim();
+    return name === 'UM' || name.startsWith('UM ');
+}
+
+function isCantColumn(colName) {
+    const name = String(colName || '').toUpperCase();
+    return name.includes('CANT');
+}
+
+function isNotesColumn(colName) {
+    const name = String(colName || '').toUpperCase();
+    return name.includes('NOTA') || name.includes('OBSERV');
+}
+
+function applyAlignmentClasses(element, colName) {
+    if (isCurrencyColumn(colName)) {
+        element.classList.add('align-right');
+        return;
+    }
+
+    if (isDescriptionColumn(colName) || isNotesColumn(colName)) {
+        element.classList.add('align-left');
+        return;
+    }
+
+    if (isItemColumn(colName) || isUmColumn(colName) || isCantColumn(colName)) {
+        element.classList.add('align-center');
+        return;
+    }
+
+    element.classList.add('align-center');
 }
 
 function toNumber(value) {

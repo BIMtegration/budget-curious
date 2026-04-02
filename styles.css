@@ -298,7 +298,7 @@ body {
 
 .data-table th {
     padding: 12px;
-    text-align: left;
+    text-align: center;
     font-weight: 600;
     color: #374151;
     border-bottom: 2px solid #e5e7eb;
@@ -322,6 +322,7 @@ body {
 .data-table td {
     padding: 12px;
     border-bottom: 1px solid #f3f4f6;
+    text-align: center;
     white-space: nowrap;
     width: 90px;
     min-width: 90px;
@@ -355,6 +356,21 @@ body {
     width: 100px;
     min-width: 100px;
     max-width: 100px;
+}
+
+.data-table th.align-left,
+.data-table td.align-left {
+    text-align: left;
+}
+
+.data-table th.align-center,
+.data-table td.align-center {
+    text-align: center;
+}
+
+.data-table th.align-right,
+.data-table td.align-right {
+    text-align: right;
 }
 
 .data-table tr:hover {
