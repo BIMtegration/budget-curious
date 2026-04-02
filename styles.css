@@ -283,9 +283,11 @@ body {
 
 /* Table Styles */
 .data-table {
-    width: 100%;
+    width: max-content;
+    min-width: 100%;
     border-collapse: collapse;
     font-size: 13px;
+    table-layout: auto;
 }
 
 .data-table thead {
@@ -303,7 +305,6 @@ body {
     border-bottom: 2px solid #e5e7eb;
     background: #f9fafb;
     white-space: nowrap;
-    max-width: 300px;
     overflow: hidden;
     text-overflow: ellipsis;
 }
@@ -319,8 +320,21 @@ body {
 .data-table td {
     padding: 12px;
     border-bottom: 1px solid #f3f4f6;
-    word-wrap: break-word;
-    max-width: 300px;
+    word-wrap: normal;
+}
+
+.data-table th.content-fit-col,
+.data-table td.content-fit-col {
+    white-space: nowrap;
+    width: 1%;
+}
+
+.data-table th.description-col,
+.data-table td.description-col {
+    min-width: 320px;
+    max-width: 520px;
+    white-space: normal;
+    word-break: break-word;
 }
 
 .data-table td.group-base {

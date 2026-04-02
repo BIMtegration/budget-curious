@@ -181,6 +181,11 @@ function renderTable(data, visibleCols) {
         const colName = headerData[actualColIdx] || `Col ${actualColIdx + 1}`;
         th.textContent = colName;
         th.classList.add(baseSet.has(actualColIdx) ? 'group-base' : 'group-extra');
+        if (isDescriptionColumn(colName)) {
+            th.classList.add('description-col');
+        } else {
+            th.classList.add('content-fit-col');
+        }
         if (isCurrencyColumn(colName)) {
             th.classList.add('currency-header');
         }
@@ -199,6 +204,12 @@ function renderTable(data, visibleCols) {
             const cellValue = row[actualColIdx] !== undefined ? row[actualColIdx] : '';
             const colName = headerData[actualColIdx] || `Col ${actualColIdx + 1}`;
             td.classList.add(baseSet.has(actualColIdx) ? 'group-base' : 'group-extra');
+            const isDescription = isDescriptionColumn(colName);
+            if (isDescription) {
+                td.classList.add('description-col');
+            } else {
+                td.classList.add('content-fit-col');
+            }
 
             const isEditable = EDITABLE_COLUMNS.some((col) =>
                 String(colName).toLowerCase().includes(col.toLowerCase())
@@ -215,7 +226,7 @@ function renderTable(data, visibleCols) {
             }
 
             const text = formatCellDisplayValue(cellValue, colName);
-            td.textContent = text.length > 100 ? `${text.substring(0, 100)}...` : text;
+            td.textContent = isDescription ? text : (text.length > 100 ? `${text.substring(0, 100)}...` : text);
             tr.appendChild(td);
         });
 
@@ -427,6 +438,11 @@ function isCurrencyColumn(colName) {
     const isVrUnit = /V\/?R\.?\s*UNIT/.test(name) || /VR\.?\s*UNIT/.test(name);
     const isVrTotal = /V\/?R\.?\s*TOTAL/.test(name) || /VR\.?\s*TOTAL/.test(name);
     return isVrUnit || isVrTotal;
+}
+
+function isDescriptionColumn(colName) {
+    const name = String(colName || '').toUpperCase();
+    return name.includes('DESCRIP');
 }
 
 function toNumber(value) {
