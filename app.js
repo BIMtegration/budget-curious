@@ -6,8 +6,8 @@ let editingCell = null;
 
 // Configuración
 const CONFIG = {
-    SHEET_TO_SHOW: 'BANDA_1C',  // Nombre de la hoja a mostrar (cambiar si es necesario)
-    SKIP_ROWS: 7,              // Número de filas de encabezado a saltar
+    SHEETS_TO_SHOW: ['BANDA_1C', 'AJUSTE ANEXO 1C'],  // Nombres de hojas compatibles (2026 y 2025 en adelante)
+    SKIP_ROWS: 7,                                       // Número de filas de encabezado a saltar
 };
 
 // Columnas que se consideran "editables" (notas/observaciones)
@@ -32,9 +32,17 @@ function handleFileUpload(event) {
             const data = new Uint8Array(e.target.result);
             workbook = XLSX.read(data, { type: 'array' });
             
-            // Verificar que la hoja existe
-            if (!workbook.SheetNames.includes(CONFIG.SHEET_TO_SHOW)) {
-                alert(`⚠️ La hoja "${CONFIG.SHEET_TO_SHOW}" no existe en este archivo.\n\nHojas disponibles: ${workbook.SheetNames.join(', ')}`);
+            // Buscar la hoja compatible
+            let foundSheet = null;
+            for (let sheetName of CONFIG.SHEETS_TO_SHOW) {
+                if (workbook.SheetNames.includes(sheetName)) {
+                    foundSheet = sheetName;
+                    break;
+                }
+            }
+            
+            if (!foundSheet) {
+                alert(`⚠️ No se encontró ninguna de las hojas esperadas.\n\nBuscando: ${CONFIG.SHEETS_TO_SHOW.join(', ')}\n\nHojas disponibles: ${workbook.SheetNames.join(', ')}`);
                 return;
             }
             
@@ -49,8 +57,8 @@ function handleFileUpload(event) {
             // Ocultar lista de hojas (solo mostramos una)
             document.getElementById('sheetsList').parentElement.style.display = 'none';
             
-            // Cargar la hoja específica
-            currentSheet = CONFIG.SHEET_TO_SHOW;
+            // Cargar la hoja encontrada
+            currentSheet = foundSheet;
             loadSheet(currentSheet);
         } catch (error) {
             alert('Error al cargar el archivo: ' + error.message);
