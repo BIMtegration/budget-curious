@@ -8,6 +8,7 @@ let availableViews = [];
 let dataStartCol = 0;
 let mergedColumnGroups = [];
 let baseColIndices = [];
+let detailHeaderRowIdx = 0;
 
 // Configuracion
 const CONFIG = {
@@ -80,7 +81,8 @@ function loadSheet(sheetName) {
         }
 
         currentData = jsonData;
-        dataStartCol = detectDataStartCol(currentData);
+        detailHeaderRowIdx = detectDetailHeaderRow(currentData);
+        dataStartCol = detectDataStartCol(currentData, detailHeaderRowIdx);
         mergedColumnGroups = extractMergedGroups(worksheet, currentData);
         buildViews();
         currentViewKey = 'base';
@@ -156,7 +158,7 @@ function renderCurrentViewTable() {
 
     const visibleCols = getVisibleColIndices();
     const currentView = availableViews.find((v) => v.key === currentViewKey);
-    const rowCount = Math.max(0, currentData.length - 1);
+    const rowCount = Math.max(0, currentData.length - (detailHeaderRowIdx + 1));
     document.getElementById('toolbarInfo').textContent =
         `${currentSheet} | ${rowCount} filas | ${visibleCols.length} columnas visibles | Vista: ${currentView ? currentView.label : 'Contractual'}`;
 
@@ -165,7 +167,7 @@ function renderCurrentViewTable() {
 
 function renderTable(data, visibleCols) {
     const container = document.getElementById('tableContainer');
-    const headerData = data[0] || [];
+    const headerData = data[detailHeaderRowIdx] || [];
 
     const table = document.createElement('table');
     table.className = 'data-table';
@@ -182,7 +184,7 @@ function renderTable(data, visibleCols) {
     table.appendChild(thead);
 
     const tbody = document.createElement('tbody');
-    for (let rowIdx = 1; rowIdx < data.length; rowIdx++) {
+    for (let rowIdx = detailHeaderRowIdx + 1; rowIdx < data.length; rowIdx++) {
         const row = data[rowIdx] || [];
         const tr = document.createElement('tr');
 
@@ -305,10 +307,10 @@ function range(start, endExclusive) {
     return values;
 }
 
-function detectDataStartCol(data) {
+function detectDataStartCol(data, headerRowIdx) {
     if (!data || data.length === 0) return 0;
 
-    const header = data[0] || [];
+    const header = data[headerRowIdx] || [];
     for (let colIdx = 0; colIdx < header.length; colIdx++) {
         const headerValue = String(header[colIdx] || '').trim();
         if (headerValue !== '') return colIdx;
@@ -325,6 +327,42 @@ function detectDataStartCol(data) {
     }
 
     return 0;
+}
+
+function detectDetailHeaderRow(data) {
+    if (!data || data.length === 0) return 0;
+
+    const maxScanRows = Math.min(6, data.length);
+    let bestIdx = 0;
+    let bestScore = -1;
+
+    for (let rowIdx = 0; rowIdx < maxScanRows; rowIdx++) {
+        const row = data[rowIdx] || [];
+        let score = 0;
+        let nonEmpty = 0;
+
+        row.forEach((cell) => {
+            const text = String(cell || '').trim();
+            if (text) {
+                nonEmpty += 1;
+                const upper = text.toUpperCase();
+                if (upper.includes('ITEM')) score += 3;
+                if (upper.includes('DESCRIP')) score += 2;
+                if (upper.includes('UM')) score += 1;
+                if (upper.includes('CANT')) score += 1;
+                if (/V\/?R\.?\s*UNIT/.test(upper) || /VR\.?\s*UNIT/.test(upper)) score += 3;
+                if (/V\/?R\.?\s*TOTAL/.test(upper) || /VR\.?\s*TOTAL/.test(upper)) score += 3;
+            }
+        });
+
+        score += Math.min(nonEmpty, 8);
+        if (score > bestScore) {
+            bestScore = score;
+            bestIdx = rowIdx;
+        }
+    }
+
+    return bestIdx;
 }
 
 function extractMergedGroups(worksheet, data) {
