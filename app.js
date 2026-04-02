@@ -177,7 +177,11 @@ function renderTable(data, visibleCols) {
 
     visibleCols.forEach((actualColIdx) => {
         const th = document.createElement('th');
-        th.textContent = headerData[actualColIdx] || `Col ${actualColIdx + 1}`;
+        const colName = headerData[actualColIdx] || `Col ${actualColIdx + 1}`;
+        th.textContent = colName;
+        if (isCurrencyColumn(colName)) {
+            th.classList.add('currency-header');
+        }
         headerRow.appendChild(th);
     });
     thead.appendChild(headerRow);
@@ -201,6 +205,10 @@ function renderTable(data, visibleCols) {
                 td.className = 'editable-cell';
                 td.title = 'Haz clic para editar';
                 td.onclick = () => openEditModal(rowIdx, actualColIdx, colName, cellValue);
+            }
+
+            if (isCurrencyColumn(colName)) {
+                td.classList.add('currency-cell');
             }
 
             const text = formatCellDisplayValue(cellValue, colName);

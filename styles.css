@@ -315,6 +315,13 @@ body {
     max-width: 300px;
 }
 
+.data-table th.currency-header,
+.data-table td.currency-cell {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
 .data-table tr:hover {
     background: #f9fafb;
 }
