@@ -6,14 +6,15 @@ let editingCell = null;
 let currentViewKey = 'base';
 let availableViews = [];
 let dataStartCol = 0;
+let mergedColumnGroups = [];
+let baseColIndices = [];
 
 // Configuracion
 const CONFIG = {
     SHEETS_TO_SHOW: ['BANDA_1C', 'AJUSTE ANEXO 1C'],
     SKIP_ROWS: 7,
     BASE_CONTRACT_COLS: 6,
-    BUDGET_BLOCK_SIZE: 5,
-    NOTES_BLOCK_SIZE: 2
+    GROUP_HEADER_ROW: 8
 };
 
 // Columnas editables
@@ -80,6 +81,7 @@ function loadSheet(sheetName) {
 
         currentData = jsonData;
         dataStartCol = detectDataStartCol(currentData);
+        mergedColumnGroups = extractMergedGroups(worksheet, currentData);
         buildViews();
         currentViewKey = 'base';
         renderViewButtons();
@@ -92,64 +94,31 @@ function loadSheet(sheetName) {
 function buildViews() {
     const headerData = currentData?.[0] || [];
     const totalCols = headerData.length;
-    const baseStart = Math.min(dataStartCol, Math.max(0, totalCols - 1));
-    const baseCols = range(baseStart, Math.min(baseStart + CONFIG.BASE_CONTRACT_COLS, totalCols));
-
     availableViews = [{ key: 'base', label: 'Contractual', extraCols: [] }];
 
-    if (totalCols <= baseStart + CONFIG.BASE_CONTRACT_COLS) {
-        return;
-    }
+    if (mergedColumnGroups.length > 0) {
+        const contractualGroup = mergedColumnGroups.find((g) => /contractual/i.test(g.label)) || mergedColumnGroups[0];
+        baseColIndices = range(contractualGroup.start, contractualGroup.end + 1);
 
-    const remainingStart = baseStart + CONFIG.BASE_CONTRACT_COLS;
-    const remainingCols = totalCols - remainingStart;
-    const trailingNotesCols = detectTrailingNotesCols(headerData, remainingStart);
-    const budgetCols = remainingCols - trailingNotesCols;
-
-    let viewCounter = 1;
-    for (let start = remainingStart; start < remainingStart + budgetCols; start += CONFIG.BUDGET_BLOCK_SIZE) {
-        const endExclusive = Math.min(start + CONFIG.BUDGET_BLOCK_SIZE, remainingStart + budgetCols);
-        availableViews.push({
-            key: `budget-${viewCounter}`,
-            label: `Actualizado ${viewCounter}`,
-            extraCols: range(start, endExclusive)
-        });
-        viewCounter += 1;
-    }
-
-    if (trailingNotesCols > 0) {
-        const notesStart = totalCols - trailingNotesCols;
-        let noteCounter = 1;
-        for (let start = notesStart; start < totalCols; start += CONFIG.NOTES_BLOCK_SIZE) {
-            const endExclusive = Math.min(start + CONFIG.NOTES_BLOCK_SIZE, totalCols);
+        let groupCounter = 1;
+        mergedColumnGroups.forEach((group) => {
+            if (group.start === contractualGroup.start && group.end === contractualGroup.end) {
+                return;
+            }
             availableViews.push({
-                key: `notes-${noteCounter}`,
-                label: `Notas ${noteCounter}`,
-                extraCols: range(start, endExclusive)
+                key: `group-${groupCounter}`,
+                label: normalizeGroupLabel(group.label, groupCounter),
+                extraCols: range(group.start, group.end + 1)
             });
-            noteCounter += 1;
-        }
+            groupCounter += 1;
+        });
+    } else {
+        const baseStart = Math.min(dataStartCol, Math.max(0, totalCols - 1));
+        baseColIndices = range(baseStart, Math.min(baseStart + CONFIG.BASE_CONTRACT_COLS, totalCols));
     }
 
     const viewContainer = document.getElementById('viewControls');
     viewContainer.style.display = availableViews.length > 1 ? 'flex' : 'none';
-}
-
-function detectTrailingNotesCols(headerData, startIdx) {
-    const noteRegex = /(nota|observ)/i;
-    let count = 0;
-    for (let i = headerData.length - 1; i >= startIdx; i--) {
-        const text = String(headerData[i] || '').trim();
-        if (noteRegex.test(text)) {
-            count += 1;
-        } else {
-            break;
-        }
-    }
-    if (count > 0 && count % 2 !== 0) {
-        count -= 1;
-    }
-    return count;
 }
 
 function renderViewButtons() {
@@ -171,14 +140,11 @@ function renderViewButtons() {
 }
 
 function getVisibleColIndices() {
-    const totalCols = currentData?.[0]?.length || 0;
-    const baseStart = Math.min(dataStartCol, Math.max(0, totalCols - 1));
-    const baseCols = range(baseStart, Math.min(baseStart + CONFIG.BASE_CONTRACT_COLS, totalCols));
     const view = availableViews.find((v) => v.key === currentViewKey);
     if (!view || view.key === 'base') {
-        return baseCols;
+        return baseColIndices;
     }
-    return [...baseCols, ...view.extraCols];
+    return [...baseColIndices, ...view.extraCols];
 }
 
 function renderCurrentViewTable() {
@@ -235,7 +201,7 @@ function renderTable(data, visibleCols) {
                 td.onclick = () => openEditModal(rowIdx, actualColIdx, colName, cellValue);
             }
 
-            const text = String(cellValue || '');
+            const text = formatCellDisplayValue(cellValue, colName);
             td.textContent = text.length > 100 ? `${text.substring(0, 100)}...` : text;
             tr.appendChild(td);
         });
@@ -359,4 +325,82 @@ function detectDataStartCol(data) {
     }
 
     return 0;
+}
+
+function extractMergedGroups(worksheet, data) {
+    const merges = worksheet['!merges'] || [];
+    const headerRowZeroBased = CONFIG.GROUP_HEADER_ROW - 1;
+    const totalCols = (data?.[0] || []).length;
+    const groups = merges
+        .filter((m) => m.s.r === headerRowZeroBased && m.e.r === headerRowZeroBased)
+        .map((m) => {
+            const start = m.s.c;
+            const end = m.e.c;
+            const label = String((data?.[0] || [])[start] || '').trim();
+            return {
+                start,
+                end,
+                label
+            };
+        })
+        .filter((g) => g.start < totalCols)
+        .sort((a, b) => a.start - b.start);
+
+    return groups;
+}
+
+function normalizeGroupLabel(label, fallbackIndex) {
+    const clean = String(label || '').replace(/\s+/g, ' ').trim();
+    if (!clean) return `Grupo ${fallbackIndex}`;
+    return clean;
+}
+
+function formatCellDisplayValue(value, colName) {
+    const raw = value === undefined || value === null ? '' : value;
+    if (!isCurrencyColumn(colName)) {
+        return String(raw);
+    }
+
+    const numeric = toNumber(raw);
+    if (numeric === null) {
+        return String(raw);
+    }
+
+    return new Intl.NumberFormat('es-CO', {
+        style: 'currency',
+        currency: 'COP',
+        maximumFractionDigits: 0
+    }).format(numeric);
+}
+
+function isCurrencyColumn(colName) {
+    const name = String(colName || '').toUpperCase();
+    const isVrUnit = /V\/?R\.?\s*UNIT/.test(name) || /VR\.?\s*UNIT/.test(name);
+    const isVrTotal = /V\/?R\.?\s*TOTAL/.test(name) || /VR\.?\s*TOTAL/.test(name);
+    return isVrUnit || isVrTotal;
+}
+
+function toNumber(value) {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        return value;
+    }
+
+    if (typeof value !== 'string') {
+        return null;
+    }
+
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+
+    let normalized = trimmed.replace(/\$/g, '').replace(/\s/g, '');
+    if (normalized.includes('.') && normalized.includes(',')) {
+        normalized = normalized.replace(/\./g, '').replace(',', '.');
+    } else if (normalized.includes(',') && !normalized.includes('.')) {
+        normalized = normalized.replace(',', '.');
+    } else {
+        normalized = normalized.replace(/,/g, '');
+    }
+
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : null;
 }
