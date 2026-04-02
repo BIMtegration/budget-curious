@@ -5,6 +5,7 @@ let currentData = null;
 let editingCell = null;
 let currentViewKey = 'base';
 let availableViews = [];
+let dataStartCol = 0;
 
 // Configuracion
 const CONFIG = {
@@ -78,6 +79,7 @@ function loadSheet(sheetName) {
         }
 
         currentData = jsonData;
+        dataStartCol = detectDataStartCol(currentData);
         buildViews();
         currentViewKey = 'base';
         renderViewButtons();
@@ -90,15 +92,16 @@ function loadSheet(sheetName) {
 function buildViews() {
     const headerData = currentData?.[0] || [];
     const totalCols = headerData.length;
-    const baseCols = range(0, Math.min(CONFIG.BASE_CONTRACT_COLS, totalCols));
+    const baseStart = Math.min(dataStartCol, Math.max(0, totalCols - 1));
+    const baseCols = range(baseStart, Math.min(baseStart + CONFIG.BASE_CONTRACT_COLS, totalCols));
 
     availableViews = [{ key: 'base', label: 'Contractual', extraCols: [] }];
 
-    if (totalCols <= CONFIG.BASE_CONTRACT_COLS) {
+    if (totalCols <= baseStart + CONFIG.BASE_CONTRACT_COLS) {
         return;
     }
 
-    const remainingStart = CONFIG.BASE_CONTRACT_COLS;
+    const remainingStart = baseStart + CONFIG.BASE_CONTRACT_COLS;
     const remainingCols = totalCols - remainingStart;
     const trailingNotesCols = detectTrailingNotesCols(headerData, remainingStart);
     const budgetCols = remainingCols - trailingNotesCols;
@@ -169,7 +172,8 @@ function renderViewButtons() {
 
 function getVisibleColIndices() {
     const totalCols = currentData?.[0]?.length || 0;
-    const baseCols = range(0, Math.min(CONFIG.BASE_CONTRACT_COLS, totalCols));
+    const baseStart = Math.min(dataStartCol, Math.max(0, totalCols - 1));
+    const baseCols = range(baseStart, Math.min(baseStart + CONFIG.BASE_CONTRACT_COLS, totalCols));
     const view = availableViews.find((v) => v.key === currentViewKey);
     if (!view || view.key === 'base') {
         return baseCols;
@@ -333,4 +337,26 @@ function range(start, endExclusive) {
     const values = [];
     for (let i = start; i < endExclusive; i++) values.push(i);
     return values;
+}
+
+function detectDataStartCol(data) {
+    if (!data || data.length === 0) return 0;
+
+    const header = data[0] || [];
+    for (let colIdx = 0; colIdx < header.length; colIdx++) {
+        const headerValue = String(header[colIdx] || '').trim();
+        if (headerValue !== '') return colIdx;
+    }
+
+    const sampleRows = Math.min(data.length, 40);
+    const maxCols = Math.max(...data.slice(0, sampleRows).map((row) => (row ? row.length : 0)), 0);
+    for (let colIdx = 0; colIdx < maxCols; colIdx++) {
+        for (let rowIdx = 1; rowIdx < sampleRows; rowIdx++) {
+            const row = data[rowIdx] || [];
+            const value = String(row[colIdx] || '').trim();
+            if (value !== '') return colIdx;
+        }
+    }
+
+    return 0;
 }
