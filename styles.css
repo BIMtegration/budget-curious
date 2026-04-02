@@ -308,11 +308,27 @@ body {
     text-overflow: ellipsis;
 }
 
+.data-table th.group-base {
+    background: #eaf4ff;
+}
+
+.data-table th.group-extra {
+    background: #fff6e8;
+}
+
 .data-table td {
     padding: 12px;
     border-bottom: 1px solid #f3f4f6;
     word-wrap: break-word;
     max-width: 300px;
+}
+
+.data-table td.group-base {
+    background: #f7fbff;
+}
+
+.data-table td.group-extra {
+    background: #fffaf2;
 }
 
 .data-table th.currency-header,

@@ -168,6 +168,7 @@ function renderCurrentViewTable() {
 function renderTable(data, visibleCols) {
     const container = document.getElementById('tableContainer');
     const headerData = data[detailHeaderRowIdx] || [];
+    const baseSet = new Set(baseColIndices);
 
     const table = document.createElement('table');
     table.className = 'data-table';
@@ -179,6 +180,7 @@ function renderTable(data, visibleCols) {
         const th = document.createElement('th');
         const colName = headerData[actualColIdx] || `Col ${actualColIdx + 1}`;
         th.textContent = colName;
+        th.classList.add(baseSet.has(actualColIdx) ? 'group-base' : 'group-extra');
         if (isCurrencyColumn(colName)) {
             th.classList.add('currency-header');
         }
@@ -196,6 +198,7 @@ function renderTable(data, visibleCols) {
             const td = document.createElement('td');
             const cellValue = row[actualColIdx] !== undefined ? row[actualColIdx] : '';
             const colName = headerData[actualColIdx] || `Col ${actualColIdx + 1}`;
+            td.classList.add(baseSet.has(actualColIdx) ? 'group-base' : 'group-extra');
 
             const isEditable = EDITABLE_COLUMNS.some((col) =>
                 String(colName).toLowerCase().includes(col.toLowerCase())
