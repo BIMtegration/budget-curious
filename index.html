@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Budget Viewer - Visualizador de Presupuestos</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1>📊 Budget Viewer</h1>
+                <p>Visualizador y Editor de Presupuestos Excel</p>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Sidebar de carga -->
+            <div class="sidebar">
+                <div class="upload-section">
+                    <h3>Cargar Presupuesto</h3>
+                    <label class="file-input-label">
+                        <input type="file" id="fileInput" accept=".xlsx,.xls" />
+                        <span>Seleccionar archivo Excel</span>
+                    </label>
+                    <div id="fileInfo" class="file-info" style="display: none;">
+                        <p><strong>Archivo:</strong> <span id="fileName"></span></p>
+                        <p><strong>Hojas:</strong> <span id="sheetCount"></span></p>
+                    </div>
+                </div>
+
+                <!-- Navigation de hojas -->
+                <div class="sheets-section">
+                    <h3>Hojas del Presupuesto</h3>
+                    <div id="sheetsList" class="sheets-list">
+                        <p style="color: #999; text-align: center;">Carga un archivo para ver las hojas</p>
+                    </div>
+                </div>
+
+                <!-- Controls -->
+                <div class="controls-section">
+                    <h3>Controles</h3>
+                    <button id="downloadBtn" class="btn btn-download" disabled>
+                        💾 Descargar Excel
+                    </button>
+                    <button id="refreshBtn" class="btn btn-secondary" disabled>
+                        🔄 Recargar
+                    </button>
+                </div>
+            </div>
+
+            <!-- Main Area -->
+            <div class="main-area">
+                <div class="toolbar">
+                    <div class="search-box">
+                        <input type="text" id="searchInput" placeholder="Buscar en la tabla..." />
+                    </div>
+                    <div class="toolbar-info">
+                        <span id="toolbarInfo">Carga un archivo para comenzar</span>
+                    </div>
+                </div>
+
+                <!-- Table view -->
+                <div id="tableContainer" class="table-container">
+                    <div class="empty-state">
+                        <p>📁 Carga un archivo Excel para visualizar los datos</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Modal para editar celdas -->
+        <div id="editModal" class="modal" style="display: none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Editar Celda</h2>
+                    <button class="close-btn" onclick="closeEditModal()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>Columna: <span id="editColName"></span></label>
+                        <textarea id="editInput" class="edit-textarea" placeholder="Ingresa el contenido..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="closeEditModal()">Cancelar</button>
+                    <button class="btn btn-primary" onclick="saveEdit()">Guardar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
