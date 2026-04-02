@@ -3,25 +3,31 @@ let workbook = null;
 let currentSheet = null;
 let currentData = null;
 let editingCell = null;
+let currentViewKey = 'base';
+let availableViews = [];
 
-// Configuración
+// Configuracion
 const CONFIG = {
-    SHEETS_TO_SHOW: ['BANDA_1C', 'AJUSTE ANEXO 1C'],  // Nombres de hojas compatibles (2026 y 2025 en adelante)
-    SKIP_ROWS: 7,                                       // Número de filas de encabezado a saltar
+    SHEETS_TO_SHOW: ['BANDA_1C', 'AJUSTE ANEXO 1C'],
+    SKIP_ROWS: 7,
+    BASE_CONTRACT_COLS: 6,
+    BUDGET_BLOCK_SIZE: 5,
+    NOTES_BLOCK_SIZE: 2
 };
 
-// Columnas que se consideran "editables" (notas/observaciones)
-const EDITABLE_COLUMNS = ['Observaciones', 'Notas', 'Marcar Adicional', 'Descripción'];
+// Columnas editables
+const EDITABLE_COLUMNS = ['Observaciones', 'Notas', 'Marcar Adicional', 'Descripcion'];
 
-// Inicialización
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('fileInput').addEventListener('change', handleFileUpload);
     document.getElementById('downloadBtn').addEventListener('click', downloadExcel);
     document.getElementById('refreshBtn').addEventListener('click', reloadCurrentSheet);
     document.getElementById('searchInput').addEventListener('input', filterTable);
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeEditModal();
+    });
 });
 
-// ===== CARGA DE ARCHIVO =====
 function handleFileUpload(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -31,33 +37,28 @@ function handleFileUpload(event) {
         try {
             const data = new Uint8Array(e.target.result);
             workbook = XLSX.read(data, { type: 'array' });
-            
-            // Buscar la hoja compatible
+
             let foundSheet = null;
-            for (let sheetName of CONFIG.SHEETS_TO_SHOW) {
+            for (const sheetName of CONFIG.SHEETS_TO_SHOW) {
                 if (workbook.SheetNames.includes(sheetName)) {
                     foundSheet = sheetName;
                     break;
                 }
             }
-            
+
             if (!foundSheet) {
-                alert(`⚠️ No se encontró ninguna de las hojas esperadas.\n\nBuscando: ${CONFIG.SHEETS_TO_SHOW.join(', ')}\n\nHojas disponibles: ${workbook.SheetNames.join(', ')}`);
+                alert(`No se encontro ninguna de las hojas esperadas.\n\nBuscando: ${CONFIG.SHEETS_TO_SHOW.join(', ')}\n\nHojas disponibles: ${workbook.SheetNames.join(', ')}`);
                 return;
             }
-            
-            // Mostrar información del archivo
+
             document.getElementById('fileName').textContent = file.name;
+            document.getElementById('sheetCount').textContent = '1 (filtrada)';
             document.getElementById('fileInfo').style.display = 'block';
-            
-            // Habilitar botones
+
             document.getElementById('downloadBtn').disabled = false;
             document.getElementById('refreshBtn').disabled = false;
-            
-            // Ocultar lista de hojas (solo mostramos una)
             document.getElementById('sheetsList').parentElement.style.display = 'none';
-            
-            // Cargar la hoja encontrada
+
             currentSheet = foundSheet;
             loadSheet(currentSheet);
         } catch (error) {
@@ -67,127 +68,182 @@ function handleFileUpload(event) {
     reader.readAsArrayBuffer(file);
 }
 
-// ===== NAVEGACIÓN DE HOJAS =====
-function renderSheetsList() {
-    const sheetsList = document.getElementById('sheetsList');
-    sheetsList.innerHTML = '';
-    
-    workbook.SheetNames.forEach(sheetName => {
-        const btn = document.createElement('button');
-        btn.className = 'sheet-btn';
-        if (sheetName === currentSheet) btn.classList.add('active');
-        btn.textContent = sheetName;
-        btn.onclick = () => {
-            document.querySelectorAll('.sheet-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            currentSheet = sheetName;
-            loadSheet(sheetName);
-        };
-        sheetsList.appendChild(btn);
-    });
-}
-
 function loadSheet(sheetName) {
     try {
         const worksheet = workbook.Sheets[sheetName];
-        let jsonData = XLSX.utils.sheet_to_json(worksheet, { 
-            header: 1,
-            defval: ''
-        });
-        
-        // Saltar las filas de encabezado configuradas
+        let jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+
         if (CONFIG.SKIP_ROWS > 0 && jsonData.length > CONFIG.SKIP_ROWS) {
             jsonData = jsonData.slice(CONFIG.SKIP_ROWS);
         }
-        
+
         currentData = jsonData;
-        
-        // Actualizar información
-        const rowCount = jsonData.length - 1;
-        const colCount = jsonData[0]?.length || 0;
-        document.getElementById('toolbarInfo').textContent = 
-            `📄 ${sheetName} | 📊 ${rowCount} filas de datos | 📋 ${colCount} columnas`;
-        
-        // Renderizar tabla
-        renderTable(jsonData);
+        buildViews();
+        currentViewKey = 'base';
+        renderViewButtons();
+        renderCurrentViewTable();
     } catch (error) {
         alert('Error al cargar la hoja: ' + error.message);
     }
 }
 
-// ===== RENDERIZAR TABLA =====
-function renderTable(data) {
-    const container = document.getElementById('tableContainer');
-    
-    if (!data || data.length === 0) {
-        container.innerHTML = '<div class="empty-state"><p>Esta hoja está vacía</p></div>';
+function buildViews() {
+    const headerData = currentData?.[0] || [];
+    const totalCols = headerData.length;
+    const baseCols = range(0, Math.min(CONFIG.BASE_CONTRACT_COLS, totalCols));
+
+    availableViews = [{ key: 'base', label: 'Contractual', extraCols: [] }];
+
+    if (totalCols <= CONFIG.BASE_CONTRACT_COLS) {
         return;
     }
-    
-    // Crear tabla
+
+    const remainingStart = CONFIG.BASE_CONTRACT_COLS;
+    const remainingCols = totalCols - remainingStart;
+    const trailingNotesCols = detectTrailingNotesCols(headerData, remainingStart);
+    const budgetCols = remainingCols - trailingNotesCols;
+
+    let viewCounter = 1;
+    for (let start = remainingStart; start < remainingStart + budgetCols; start += CONFIG.BUDGET_BLOCK_SIZE) {
+        const endExclusive = Math.min(start + CONFIG.BUDGET_BLOCK_SIZE, remainingStart + budgetCols);
+        availableViews.push({
+            key: `budget-${viewCounter}`,
+            label: `Actualizado ${viewCounter}`,
+            extraCols: range(start, endExclusive)
+        });
+        viewCounter += 1;
+    }
+
+    if (trailingNotesCols > 0) {
+        const notesStart = totalCols - trailingNotesCols;
+        let noteCounter = 1;
+        for (let start = notesStart; start < totalCols; start += CONFIG.NOTES_BLOCK_SIZE) {
+            const endExclusive = Math.min(start + CONFIG.NOTES_BLOCK_SIZE, totalCols);
+            availableViews.push({
+                key: `notes-${noteCounter}`,
+                label: `Notas ${noteCounter}`,
+                extraCols: range(start, endExclusive)
+            });
+            noteCounter += 1;
+        }
+    }
+
+    const viewContainer = document.getElementById('viewControls');
+    viewContainer.style.display = availableViews.length > 1 ? 'flex' : 'none';
+}
+
+function detectTrailingNotesCols(headerData, startIdx) {
+    const noteRegex = /(nota|observ)/i;
+    let count = 0;
+    for (let i = headerData.length - 1; i >= startIdx; i--) {
+        const text = String(headerData[i] || '').trim();
+        if (noteRegex.test(text)) {
+            count += 1;
+        } else {
+            break;
+        }
+    }
+    if (count > 0 && count % 2 !== 0) {
+        count -= 1;
+    }
+    return count;
+}
+
+function renderViewButtons() {
+    const container = document.getElementById('viewControls');
+    container.innerHTML = '';
+
+    availableViews.forEach((view) => {
+        const btn = document.createElement('button');
+        btn.className = `view-btn ${view.key === currentViewKey ? 'active' : ''}`;
+        btn.textContent = view.label;
+        btn.onclick = () => {
+            currentViewKey = view.key;
+            renderViewButtons();
+            renderCurrentViewTable();
+            filterTable();
+        };
+        container.appendChild(btn);
+    });
+}
+
+function getVisibleColIndices() {
+    const totalCols = currentData?.[0]?.length || 0;
+    const baseCols = range(0, Math.min(CONFIG.BASE_CONTRACT_COLS, totalCols));
+    const view = availableViews.find((v) => v.key === currentViewKey);
+    if (!view || view.key === 'base') {
+        return baseCols;
+    }
+    return [...baseCols, ...view.extraCols];
+}
+
+function renderCurrentViewTable() {
+    if (!currentData || currentData.length === 0) {
+        const container = document.getElementById('tableContainer');
+        container.innerHTML = '<div class="empty-state"><p>Esta hoja esta vacia</p></div>';
+        return;
+    }
+
+    const visibleCols = getVisibleColIndices();
+    const currentView = availableViews.find((v) => v.key === currentViewKey);
+    const rowCount = Math.max(0, currentData.length - 1);
+    document.getElementById('toolbarInfo').textContent =
+        `${currentSheet} | ${rowCount} filas | ${visibleCols.length} columnas visibles | Vista: ${currentView ? currentView.label : 'Contractual'}`;
+
+    renderTable(currentData, visibleCols);
+}
+
+function renderTable(data, visibleCols) {
+    const container = document.getElementById('tableContainer');
+    const headerData = data[0] || [];
+
     const table = document.createElement('table');
     table.className = 'data-table';
-    
-    // Header
+
     const thead = document.createElement('thead');
     const headerRow = document.createElement('tr');
-    
-    // Detectar número de columnas del header (primera fila no vacía)
-    const headerData = data[0] || [];
-    const colCount = headerData.length;
-    
-    for (let i = 0; i < colCount; i++) {
+
+    visibleCols.forEach((actualColIdx) => {
         const th = document.createElement('th');
-        th.textContent = headerData[i] || `Col ${i + 1}`;
+        th.textContent = headerData[actualColIdx] || `Col ${actualColIdx + 1}`;
         headerRow.appendChild(th);
-    }
-    
+    });
     thead.appendChild(headerRow);
     table.appendChild(thead);
-    
-    // Body
+
     const tbody = document.createElement('tbody');
-    
     for (let rowIdx = 1; rowIdx < data.length; rowIdx++) {
         const row = data[rowIdx] || [];
         const tr = document.createElement('tr');
-        
-        for (let colIdx = 0; colIdx < colCount; colIdx++) {
+
+        visibleCols.forEach((actualColIdx) => {
             const td = document.createElement('td');
-            const cellValue = row[colIdx] !== undefined ? row[colIdx] : '';
-            const colName = headerData[colIdx] || `Col ${colIdx + 1}`;
-            
-            // Verificar si es editable
-            const isEditable = EDITABLE_COLUMNS.some(col => 
-                colName.toLowerCase().includes(col.toLowerCase())
+            const cellValue = row[actualColIdx] !== undefined ? row[actualColIdx] : '';
+            const colName = headerData[actualColIdx] || `Col ${actualColIdx + 1}`;
+
+            const isEditable = EDITABLE_COLUMNS.some((col) =>
+                String(colName).toLowerCase().includes(col.toLowerCase())
             );
-            
+
             if (isEditable) {
                 td.className = 'editable-cell';
                 td.title = 'Haz clic para editar';
-                td.onclick = () => openEditModal(rowIdx, colIdx, colName, cellValue);
+                td.onclick = () => openEditModal(rowIdx, actualColIdx, colName, cellValue);
             }
-            
-            // Mostrar valor
-            td.textContent = cellValue || '';
-            
-            // Limitar longitud visual
-            if (td.textContent.length > 100) {
-                td.textContent = td.textContent.substring(0, 100) + '...';
-            }
-            
+
+            const text = String(cellValue || '');
+            td.textContent = text.length > 100 ? `${text.substring(0, 100)}...` : text;
             tr.appendChild(td);
-        }
-        
+        });
+
         tbody.appendChild(tr);
     }
-    
+
     table.appendChild(tbody);
     container.innerHTML = '';
     container.appendChild(table);
 }
 
-// ===== EDICIÓN DE CELDAS =====
 function openEditModal(rowIdx, colIdx, colName, value) {
     editingCell = { rowIdx, colIdx, colName };
     document.getElementById('editColName').textContent = colName;
@@ -203,50 +259,46 @@ function closeEditModal() {
 
 function saveEdit() {
     if (!editingCell) return;
-    
+
     const newValue = document.getElementById('editInput').value;
     const { rowIdx, colIdx } = editingCell;
-    
-    // Actualizar datos en memoria
+
     if (!currentData[rowIdx]) {
         currentData[rowIdx] = [];
     }
     currentData[rowIdx][colIdx] = newValue;
-    
-    // Cerrar modal y recargar tabla
+
     closeEditModal();
-    renderTable(currentData);
+    renderCurrentViewTable();
+    filterTable();
 }
 
-// Cerrar modal con Escape
-document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closeEditModal();
-});
-
-// ===== BÚSQUEDA Y FILTRO =====
 function filterTable() {
     const searchTerm = document.getElementById('searchInput').value.toLowerCase();
-    
     if (!currentData) return;
-    
-    const rows = document.querySelectorAll('.data-table tbody tr');
+
+    const tbody = document.querySelector('.data-table tbody');
+    if (!tbody) return;
+
+    tbody.querySelectorAll('.no-results-row').forEach((row) => row.remove());
+
+    const rows = tbody.querySelectorAll('tr');
     let visibleCount = 0;
-    
-    rows.forEach((row, idx) => {
+    rows.forEach((row) => {
         const text = row.textContent.toLowerCase();
-        if (text.includes(searchTerm)) {
+        if (!searchTerm || text.includes(searchTerm)) {
             row.style.display = '';
-            visibleCount++;
+            visibleCount += 1;
         } else {
             row.style.display = 'none';
         }
     });
-    
-    if (visibleCount === 0 && currentData.length > 1) {
-        // Mostrar mensaje de no encontrado
-        const emptyRow = document.createElement('tr');
-        emptyRow.innerHTML = '<td colspan="100" style="text-align: center; padding: 20px; color: #999;">No se encontraron resultados</td>';
-        document.querySelector('.data-table tbody').appendChild(emptyRow);
+
+    if (searchTerm && visibleCount === 0 && currentData.length > 1) {
+        const noResult = document.createElement('tr');
+        noResult.className = 'no-results-row';
+        noResult.innerHTML = '<td colspan="100" style="text-align:center;padding:20px;color:#999;">No se encontraron resultados</td>';
+        tbody.appendChild(noResult);
     }
 }
 
@@ -256,40 +308,29 @@ function reloadCurrentSheet() {
     }
 }
 
-// ===== DESCARGA DE EXCEL =====
 function downloadExcel() {
     if (!workbook || !currentData) {
         alert('No hay datos para descargar');
         return;
     }
-    
+
     try {
-        // Actualizar la hoja actual en el workbook con los datos modificados
         const ws = XLSX.utils.aoa_to_sheet(currentData);
         workbook.Sheets[currentSheet] = ws;
-        
-        // Generar nombre de archivo con fecha
+
         const now = new Date();
         const dateStr = now.toISOString().split('T')[0];
         const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '-');
         const filename = `Presupuesto_${dateStr}_${timeStr}.xlsx`;
-        
-        // Descargar
+
         XLSX.writeFile(workbook, filename);
     } catch (error) {
         alert('Error al descargar el archivo: ' + error.message);
     }
 }
 
-// ===== UTILIDADES =====
-function getCellValue(rowIdx, colIdx) {
-    if (!currentData || !currentData[rowIdx]) return '';
-    return currentData[rowIdx][colIdx] || '';
-}
-
-function setCellValue(rowIdx, colIdx, value) {
-    if (!currentData[rowIdx]) {
-        currentData[rowIdx] = [];
-    }
-    currentData[rowIdx][colIdx] = value;
+function range(start, endExclusive) {
+    const values = [];
+    for (let i = start; i < endExclusive; i++) values.push(i);
+    return values;
 }
