@@ -4,6 +4,12 @@ let currentSheet = null;
 let currentData = null;
 let editingCell = null;
 
+// Configuración
+const CONFIG = {
+    SHEET_TO_SHOW: 'BANDA_1C',  // Nombre de la hoja a mostrar (cambiar si es necesario)
+    SKIP_ROWS: 7,              // Número de filas de encabezado a saltar
+};
+
 // Columnas que se consideran "editables" (notas/observaciones)
 const EDITABLE_COLUMNS = ['Observaciones', 'Notas', 'Marcar Adicional', 'Descripción'];
 
@@ -26,20 +32,25 @@ function handleFileUpload(event) {
             const data = new Uint8Array(e.target.result);
             workbook = XLSX.read(data, { type: 'array' });
             
+            // Verificar que la hoja existe
+            if (!workbook.SheetNames.includes(CONFIG.SHEET_TO_SHOW)) {
+                alert(`⚠️ La hoja "${CONFIG.SHEET_TO_SHOW}" no existe en este archivo.\n\nHojas disponibles: ${workbook.SheetNames.join(', ')}`);
+                return;
+            }
+            
             // Mostrar información del archivo
             document.getElementById('fileName').textContent = file.name;
-            document.getElementById('sheetCount').textContent = workbook.SheetNames.length;
             document.getElementById('fileInfo').style.display = 'block';
             
             // Habilitar botones
             document.getElementById('downloadBtn').disabled = false;
             document.getElementById('refreshBtn').disabled = false;
             
-            // Crear lista de hojas
-            renderSheetsList();
+            // Ocultar lista de hojas (solo mostramos una)
+            document.getElementById('sheetsList').parentElement.style.display = 'none';
             
-            // Cargar la primera hoja
-            currentSheet = workbook.SheetNames[0];
+            // Cargar la hoja específica
+            currentSheet = CONFIG.SHEET_TO_SHOW;
             loadSheet(currentSheet);
         } catch (error) {
             alert('Error al cargar el archivo: ' + error.message);
@@ -71,16 +82,23 @@ function renderSheetsList() {
 function loadSheet(sheetName) {
     try {
         const worksheet = workbook.Sheets[sheetName];
-        const jsonData = XLSX.utils.sheet_to_json(worksheet, { 
+        let jsonData = XLSX.utils.sheet_to_json(worksheet, { 
             header: 1,
             defval: ''
         });
         
+        // Saltar las filas de encabezado configuradas
+        if (CONFIG.SKIP_ROWS > 0 && jsonData.length > CONFIG.SKIP_ROWS) {
+            jsonData = jsonData.slice(CONFIG.SKIP_ROWS);
+        }
+        
         currentData = jsonData;
         
         // Actualizar información
+        const rowCount = jsonData.length - 1;
+        const colCount = jsonData[0]?.length || 0;
         document.getElementById('toolbarInfo').textContent = 
-            `Hoja: ${sheetName} | Filas: ${jsonData.length} | Columnas: ${jsonData[0]?.length || 0}`;
+            `📄 ${sheetName} | 📊 ${rowCount} filas de datos | 📋 ${colCount} columnas`;
         
         // Renderizar tabla
         renderTable(jsonData);
