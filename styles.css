@@ -352,6 +352,9 @@ body {
     text-align: right;
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
+    width: 100px;
+    min-width: 100px;
+    max-width: 100px;
 }
 
 .data-table tr:hover {
